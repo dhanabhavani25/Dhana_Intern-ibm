@@ -1,0 +1,51 @@
+from flask import Flask, render_template, request, jsonify
+import pandas as pd
+import numpy as np
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.preprocessing import LabelEncoder
+import plotly.express as px
+import plotly.utils
+import json
+
+app = Flask(__name__)
+df = pd.read_csv("Global_AI_Agent_Workforce_Integration_2026.csv")
+
+def train_model():
+    df_model = df.copy()
+    le_ind, le_size, le_role = LabelEncoder(), LabelEncoder(), LabelEncoder()
+    df_model['Industry_enc'] = le_ind.fit_transform(df_model['Industry'])
+    df_model['Company_Size_enc'] = le_size.fit_transform(df_model['Company_Size'])
+    df_model['Primary_AI_Agent_Role_enc'] = le_role.fit_transform(df_model['Primary_AI_Agent_Role'])
+    X = df_model[['Industry_enc','Company_Size_enc','Primary_AI_Agent_Role_enc','Autonomous_Agents_Deployed','Avg_Agent_Cost_Per_Month_USD','Has_Strict_AI_Governance']]
+    model_roi = RandomForestRegressor(n_estimators=100, random_state=42).fit(X, df_model['Months_To_Positive_ROI'])
+    model_prod = RandomForestRegressor(n_estimators=100, random_state=42).fit(X, df_model['Productivity_Gain_Percent'])
+    return model_roi, model_prod, le_ind, le_size, le_role
+
+model_roi, model_prod, le_ind, le_size, le_role = train_model()
+
+@app.route('/')
+def index():
+    stats = {
+        "total_companies": len(df),
+        "avg_productivity": round(df['Productivity_Gain_Percent'].mean(),2),
+        "avg_roi_months": round(df['Months_To_Positive_ROI'].mean(),2),
+        "total_agents": int(df['Autonomous_Agents_Deployed'].sum()),
+    }
+    fig1 = px.bar(df.groupby('Industry')['Productivity_Gain_Percent'].mean().reset_index(), x='Industry', y='Productivity_Gain_Percent', title='Avg Productivity by Industry')
+    fig2 = px.scatter(df, x='Autonomous_Agents_Deployed', y='Productivity_Gain_Percent', color='Company_Size')
+    charts = [json.dumps(fig, cls=plotly.utils.PlotlyJSONEncoder) for fig in [fig1, fig2]]
+    return render_template('index.html', stats=stats, charts=charts, industries=sorted(df['Industry'].unique()), roles=sorted(df['Primary_AI_Agent_Role'].unique()), sizes=sorted(df['Company_Size'].unique()))
+
+@app.route('/predict', methods=['POST'])
+def predict():
+    data = request.json
+    ind_enc = le_ind.transform([data['industry']])[0]
+    size_enc = le_size.transform([data['size']])[0]
+    role_enc = le_role.transform([data['role']])[0]
+    X_new = [[ind_enc, size_enc, role_enc, int(data['agents']), float(data['cost']), int(data['governance'])]]
+    roi = model_roi.predict(X_new)[0]
+    prod = model_prod.predict(X_new)[0]
+    return jsonify({"roi_months": round(float(roi),2), "productivity_gain": round(float(prod),2)})
+
+if __name__ == '__main__':
+    app.run(debug=True)
