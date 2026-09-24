@@ -1,7 +1,0 @@
-Title, Synopsis, Problem Statement
-System Requirements (Python 3.10, Flask)
-Dataset Description (all 13 columns)
-Methodology: EDA -> Label Encoding -> RandomForest -> Flask
-DFD: User -> Flask -> Data Analysis -> ML Model -> Dashboard
-Results & Conclusion
-Future Scope: Chatbot, Power BI, Cost Optimizer
